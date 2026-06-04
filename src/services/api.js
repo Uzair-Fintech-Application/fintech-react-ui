@@ -25,6 +25,15 @@ async function request(method, path, body, noAuth = false) {
 
   const res = await fetch(BASE + path, opts);
   if (res.status === 401 || res.status === 403) {
+    if (path.includes('/api/auth/login')) {
+      const textResponse = await res.text();
+      let errorMsg = 'No user exists with these credentials.';
+      try {
+         const data = JSON.parse(textResponse);
+         if (data.message || data.error) errorMsg = data.message || data.error;
+      } catch (e) {}
+      throw new Error(errorMsg);
+    }
     clearToken();
     if (onUnauthorized) onUnauthorized();
     if (window.location.pathname !== '/login') {
@@ -60,6 +69,23 @@ export async function login(email, password) {
 
 export function logout() { clearToken(); }
 
+export async function refreshToken() {
+  const data = await request('POST', '/api/auth/refresh', null);
+  setToken(data.token);
+  setUser(data.user);
+  return data;
+}
+
+/* ── JWT helpers ── */
+export function getTokenExpiryMs() {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp ? payload.exp * 1000 : null;
+  } catch { return null; }
+}
+
 /* ══════════ WALLETS ══════════ */
 export const getWallets = () => request('GET', '/api/wallets');
 export const getWallet = (id) => request('GET', '/api/wallets/' + id);
@@ -88,6 +114,8 @@ export const getLiquidity = () => request('GET', '/api/wallets/admin/metrics/liq
 export const getRevenue = () => request('GET', '/api/wallets/admin/metrics/revenue');
 export const reconcile = () => request('POST', '/api/ledger/admin/reconcile');
 export const toggleFreezeWallet = (walletId) => request('POST', `/api/wallets/admin/${walletId}/toggle-freeze`);
+export const getAllWallets = () => request('GET', '/api/wallets/admin/all');
+export const getGlobalAudit = (page = 0, size = 50) => request('GET', `/api/ledger/admin/audit?page=${page}&size=${size}`);
 export const promoteUser = (userId) => request('POST', `/api/auth/admin/users/${userId}/promote`);
 export const getHealth = async (service = '') => {
   try {
